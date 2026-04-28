@@ -100,19 +100,31 @@ def process_document_task(self, document_id: str, job_id: str):
         _publish(doc_uuid, job_uuid, "job_completed", 100, "completed", "Job completed")
     except Exception as exc:
         logger.exception("Document processing failed")
+        will_retry = self.request.retries < self.max_retries
         document = db.scalar(select(Document).where(Document.id == doc_uuid))
         job = db.scalar(select(ProcessingJob).where(ProcessingJob.id == job_uuid))
         if document:
-            document.status = DocumentStatus.failed
+            document.status = DocumentStatus.queued if will_retry else DocumentStatus.failed
             document.error_message = str(exc)
         if job:
-            job.status = DocumentStatus.failed
+            job.status = DocumentStatus.queued if will_retry else DocumentStatus.failed
             job.error_message = str(exc)
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = None if will_retry else datetime.now(timezone.utc)
         db.commit()
         # Never let error reporting mask the root exception.
         try:
-            _publish(doc_uuid, job_uuid, "failed", 100, "failed", message="Processing failed", error=str(exc))
+            if will_retry:
+                _publish(
+                    doc_uuid,
+                    job_uuid,
+                    "retry_scheduled",
+                    10,
+                    "queued",
+                    message="Temporary failure, retrying",
+                    error=str(exc),
+                )
+            else:
+                _publish(doc_uuid, job_uuid, "failed", 100, "failed", message="Processing failed", error=str(exc))
         except Exception:
             logger.exception("Failed to publish failure event")
         raise
