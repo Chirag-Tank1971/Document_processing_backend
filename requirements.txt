@@ -9,3 +9,4 @@ celery[redis]
 redis
 sse-starlette
 orjson
+supabase

@@ -1,10 +1,8 @@
 import csv
 import io
 import json
-from pathlib import Path
 from uuid import UUID
 
-from celery import uuid as celery_uuid
 from fastapi import HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -12,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document, DocumentStatus
 from app.repositories.document_repository import DocumentRepository
+from app.services.file_storage import FileStorageService
 from app.workers.tasks import process_document_task
 
 
@@ -19,8 +18,7 @@ class DocumentService:
     def __init__(self, db: Session):
         self.db = db
         self.repo = DocumentRepository(db)
-        self.uploads_dir = Path(settings.uploads_dir)
-        self.uploads_dir.mkdir(parents=True, exist_ok=True)
+        self.file_storage = FileStorageService()
 
     def upload_documents(self, files: list[UploadFile]) -> list[UUID]:
         if not files:
@@ -38,17 +36,18 @@ class DocumentService:
             if len(contents) > max_size_bytes:
                 raise HTTPException(status_code=400, detail=f"{file.filename} exceeds max size limit")
 
-            safe_name = file.filename.replace("/", "_").replace("\\", "_")
-            storage_path = self.uploads_dir / f"{celery_uuid()}_{safe_name}"
-            with storage_path.open("wb") as out:
-                out.write(contents)
+            file_ref = self.file_storage.save_upload(
+                filename=file.filename,
+                content=contents,
+                content_type=file.content_type or "application/octet-stream",
+            )
 
             document = self.repo.create_document(
                 filename=file.filename,
                 content_type=file.content_type or "application/octet-stream",
                 size_bytes=len(contents),
                 status=DocumentStatus.queued,
-                file_path=str(storage_path),
+                file_path=file_ref,
             )
             job = self.repo.create_job(document_id=document.id, status=DocumentStatus.queued, attempt=1)
             self.db.commit()

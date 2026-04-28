@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     uploads_dir: str = "uploads"
     max_file_size_mb: int = 20
     max_files_per_upload: int = 3
+    supabase_url: str | None = None
+    supabase_service_role_key: str | None = None
+    supabase_storage_bucket: str | None = None
     cors_origins: str = "http://localhost:3000,http://localhost:3001"
     cors_allow_origin_regex: str | None = r"https://.*\.vercel\.app"
 

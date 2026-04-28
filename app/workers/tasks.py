@@ -1,23 +1,38 @@
 import logging
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import select
 
 from app.core.database import SessionLocal
 from app.models.document import Document, DocumentStatus, ProcessingJob
+from app.services.file_storage import FileStorageService
 from app.services.progress_service import ProgressService
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 progress_service = ProgressService()
+file_storage_service = FileStorageService()
 
 
-def _publish(document_id: UUID, job_id: UUID, step: str, progress: int, status: str, message: str | None = None):
+def _publish(
+    document_id: UUID,
+    job_id: UUID,
+    step: str,
+    progress: int,
+    status: str,
+    message: str | None = None,
+    error: str | None = None,
+):
     progress_service.publish(
-        document_id=document_id, job_id=job_id, step=step, progress=progress, status=status, message=message
+        document_id=document_id,
+        job_id=job_id,
+        step=step,
+        progress=progress,
+        status=status,
+        message=message,
+        error=error,
     )
 
 
@@ -43,7 +58,7 @@ def process_document_task(self, document_id: str, job_id: str):
         _publish(doc_uuid, job_uuid, "parsing_started", 20, "processing", "Parsing started")
         time.sleep(1)
 
-        file_text = Path(document.file_path).read_text(encoding="utf-8", errors="ignore")
+        file_text = file_storage_service.read_text(document.file_path)
         parsed_text = file_text[:2000] if file_text else f"Parsed content for {document.filename}"
         _publish(doc_uuid, job_uuid, "parsing_completed", 45, "processing", "Parsing completed")
         time.sleep(1)
@@ -95,7 +110,11 @@ def process_document_task(self, document_id: str, job_id: str):
             job.error_message = str(exc)
             job.completed_at = datetime.now(timezone.utc)
         db.commit()
-        _publish(doc_uuid, job_uuid, "failed", 100, "failed", error=str(exc))
+        # Never let error reporting mask the root exception.
+        try:
+            _publish(doc_uuid, job_uuid, "failed", 100, "failed", message="Processing failed", error=str(exc))
+        except Exception:
+            logger.exception("Failed to publish failure event")
         raise
     finally:
         db.close()
