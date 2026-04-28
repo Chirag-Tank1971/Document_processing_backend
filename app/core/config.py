@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     uploads_dir: str = "uploads"
     max_file_size_mb: int = 20
     max_files_per_upload: int = 3
+    cors_origins: str = "http://localhost:3000,http://localhost:3001"
+    cors_allow_origin_regex: str | None = r"https://.*\.vercel\.app"
 
 
 settings = Settings()
