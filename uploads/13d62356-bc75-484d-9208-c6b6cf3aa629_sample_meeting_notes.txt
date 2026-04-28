@@ -1,0 +1,22 @@
+Weekly Product Review - 2026-04-25
+
+Attendees:
+- Priya (PM)
+- Arjun (Backend)
+- Sana (Frontend)
+- Ravi (QA)
+
+Agenda:
+1. Sprint progress
+2. API latency concerns
+3. Demo preparation
+
+Key decisions:
+- Keep SSE for live updates in v1.
+- Add retry visibility on dashboard.
+- Defer auth to v2 scope.
+
+Action items:
+- Backend: improve error messages
+- Frontend: add empty-state and loading hints
+- QA: prepare regression checklist
